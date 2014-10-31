@@ -8,9 +8,9 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyTitle("EpicEvade")]
 [assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("EPS Financial")]
+[assembly: AssemblyCompany("Robert McMahon")]
 [assembly: AssemblyProduct("EpicEvade")]
-[assembly: AssemblyCopyright("Copyright © EPS Financial 2014")]
+[assembly: AssemblyCopyright("Copyright © Robert McMahon 2014")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
